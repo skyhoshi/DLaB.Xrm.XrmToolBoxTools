@@ -100,17 +100,31 @@ namespace DLaB.ModelBuilderExtensions
             _bufferStream.Flush();
             var text = Encoding.GetString(_bufferStream.ToArray());
             var lines = text.Split(new [] { Environment.NewLine }, StringSplitOptions.None);
-            var updatedLines = lines.Select(UpdateLineForNullablePropertyTypes).ToList();
+            var updatedLines = lines.Select(UpdateLineForNullables).ToList();
             File.WriteAllLines(_outputFile, updatedLines.Take(updatedLines.Count - 1), Encoding);
             base.Dispose(disposing);
             _default.Dispose();
             _bufferStream.Dispose();
         }
 
-        private string UpdateLineForNullablePropertyTypes(string s)
+        private string UpdateLineForNullables(string s)
         {
             var trimmed = s.Trim();
+            s = UpdateLineForNullablePropertyTypes(s, trimmed);
+            if (trimmed.StartsWith("public static Microsoft.Xrm.Sdk.OptionSetValueCollection GetMultiEnum<T>")){
+                s = s.Replace("public static Microsoft.Xrm.Sdk.OptionSetValueCollection", "public static Microsoft.Xrm.Sdk.OptionSetValueCollection?")
+                    .Replace(", System.Collections.Generic.IEnumerable<T> values)", ", System.Collections.Generic.IEnumerable<T>? values)");
+            }
+            else if (trimmed == "collection.AddRange(System.Linq.Enumerable.Select(values, v => new Microsoft.Xrm.Sdk.OptionSetValue((int)(object)v)));")
+            {
+                s = s.Replace("collection.AddRange(System.Linq.Enumerable.Select(values, v => new Microsoft.Xrm.Sdk.OptionSetValue((int)(object)v)));",
+                              "collection.AddRange(System.Linq.Enumerable.Select(System.Linq.Enumerable.Where(values, v=> v != null), v => new Microsoft.Xrm.Sdk.OptionSetValue((int)(object)v!)));");
+            }
+            return s;
+        }
 
+        private string UpdateLineForNullablePropertyTypes(string s, string trimmed)
+        {
             if (trimmed.Contains("SetRelatedEntity<"))
             {
                 _insideSetRelatedEntityCall = true;
