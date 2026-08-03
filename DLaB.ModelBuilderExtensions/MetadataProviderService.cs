@@ -91,6 +91,12 @@ namespace DLaB.ModelBuilderExtensions
         private void UpdateEntityMetadata(IOrganizationMetadata metadata)
         {
             MakeReadonlyEntityAttributesEditable(metadata);
+            ForceDeprecatedEntityAttributes(metadata);
+        }
+
+        private void ForceDeprecatedEntityAttributes(IOrganizationMetadata metadata)
+        {
+            new ObsoleteAttributesProviderService(Settings).PopulateDeprecatedVersion(metadata.Entities);
         }
 
         private void MakeReadonlyEntityAttributesEditable(IOrganizationMetadata metadata)

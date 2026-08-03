@@ -22,49 +22,68 @@ namespace DLaB.ModelBuilderExtensions.Tests
         }
 
         [TestMethod]
-        public void GetObsoleteAttributes_WhenTokenMatchesDisplayName_ShouldReturnMatchingAttribute()
+        public void GetObsoleteAttributes_WhenDeprecatedVersionIsNotNull_ShouldReturnAttribute()
+        {
+            var entity = BuildEntity("account",
+                ("name", "Full Name (Deprecated)"),
+                ("emailaddress1", "Email"));
+            SetDeprecatedVersion(entity.Attributes[0], string.Empty);
+
+            var serviceProvider = BuildServiceProvider(BuildMetadata(entity));
+            var sut = BuildSut(obsoleteDeprecated: true);
+
+            var result = sut.GetObsoleteAttributes(serviceProvider);
+
+            Assert.IsTrue(result.Contains("account.name"),
+                "Attribute with a non-null DeprecatedVersion should be included.");
+            Assert.IsFalse(result.Contains("account.emailaddress1"),
+                "Attribute with a null DeprecatedVersion should be excluded.");
+        }
+
+        [TestMethod]
+        public void GetObsoleteAttributes_WhenDeprecatedVersionsHaveNotBeenPopulated_ShouldPopulateThemFirst()
+        {
+            var entity = BuildEntity("account",
+                ("name", "Full Name (Deprecated)"),
+                ("emailaddress1", "Email"));
+            var serviceProvider = BuildServiceProvider(BuildMetadata(entity));
+            var sut = BuildSut(obsoleteDeprecated: true, obsoleteTokens: new List<string> { "*Deprecated*" });
+
+            var result = sut.GetObsoleteAttributes(serviceProvider);
+
+            Assert.AreEqual(string.Empty, entity.Attributes[0].DeprecatedVersion);
+            Assert.IsTrue(result.Contains("account.name"));
+            Assert.IsFalse(result.Contains("account.emailaddress1"));
+        }
+
+        [TestMethod]
+        public void GetObsoleteAttributes_WhenDeprecatedVersionIsNull_ShouldReturnEmptySet()
         {
             var entity = BuildEntity("account",
                 ("name", "Full Name (Deprecated)"),
                 ("emailaddress1", "Email"));
 
             var serviceProvider = BuildServiceProvider(BuildMetadata(entity));
-            var sut = BuildSut(obsoleteDeprecated: true, obsoleteTokens: new List<string> { "*Deprecated*" });
+            var sut = BuildSut(obsoleteDeprecated: true);
 
             var result = sut.GetObsoleteAttributes(serviceProvider);
 
-            Assert.IsTrue(result.Contains("account.name"),
-                "Attribute whose display name matches the obsolete token should be included.");
-            Assert.IsFalse(result.Contains("account.emailaddress1"),
-                "Attribute whose display name does not match the obsolete token should be excluded.");
-        }
-
-        [TestMethod]
-        public void GetObsoleteAttributes_WhenNoTokensMatch_ShouldReturnEmptySet()
-        {
-            var entity = BuildEntity("account",
-                ("name", "Full Name"),
-                ("emailaddress1", "Email"));
-
-            var serviceProvider = BuildServiceProvider(BuildMetadata(entity));
-            var sut = BuildSut(obsoleteDeprecated: true, obsoleteTokens: new List<string> { "*Deprecated*" });
-
-            var result = sut.GetObsoleteAttributes(serviceProvider);
-
-            Assert.AreEqual(0, result.Count, "No attributes should match when no display name contains the token.");
+            Assert.AreEqual(0, result.Count, "Display-name tokens should not determine whether an attribute is obsolete.");
         }
 
         [TestMethod]
         public void GetObsoleteAttributes_WhenCalledTwice_ShouldReturnCachedResult()
         {
             var metadataProvider = A.Fake<IMetadataProviderService>();
+            var entity = BuildEntity("account", ("name", "Full Name (Deprecated)"));
+            SetDeprecatedVersion(entity.Attributes[0], string.Empty);
             A.CallTo(() => metadataProvider.LoadMetadata(A<IServiceProvider>._))
-                .Returns(BuildMetadata(BuildEntity("account", ("name", "Full Name (Deprecated)"))));
+                .Returns(BuildMetadata(entity));
 
             var serviceProvider = A.Fake<IServiceProvider>();
             A.CallTo(() => serviceProvider.GetService(typeof(IMetadataProviderService))).Returns(metadataProvider);
 
-            var sut = BuildSut(obsoleteDeprecated: true, obsoleteTokens: new List<string> { "*Deprecated*" });
+            var sut = BuildSut(obsoleteDeprecated: true);
 
             var first = sut.GetObsoleteAttributes(serviceProvider);
             var second = sut.GetObsoleteAttributes(serviceProvider);
@@ -79,9 +98,11 @@ namespace DLaB.ModelBuilderExtensions.Tests
         {
             var account = BuildEntity("account", ("name", "Full Name (Deprecated)"), ("emailaddress1", "Email"));
             var contact = BuildEntity("contact", ("jobtitle", "Job Title (Deprecated)"), ("firstname", "First Name"));
+            SetDeprecatedVersion(account.Attributes[0], string.Empty);
+            SetDeprecatedVersion(contact.Attributes[0], "9.0");
 
             var serviceProvider = BuildServiceProvider(BuildMetadata(account, contact));
-            var sut = BuildSut(obsoleteDeprecated: true, obsoleteTokens: new List<string> { "*Deprecated*" });
+            var sut = BuildSut(obsoleteDeprecated: true);
 
             var result = sut.GetObsoleteAttributes(serviceProvider);
 
@@ -174,6 +195,14 @@ namespace DLaB.ModelBuilderExtensions.Tests
                 .GetProperty(nameof(EntityMetadata.Attributes))!
                 .SetValue(entity, attributeList.ToArray());
             return entity;
+        }
+
+        private static void SetDeprecatedVersion(AttributeMetadata attribute, string deprecatedVersion)
+        {
+            typeof(AttributeMetadata)
+                .GetProperty(nameof(AttributeMetadata.DeprecatedVersion))!
+                .GetSetMethod(true)!
+                .Invoke(attribute, [deprecatedVersion]);
         }
 
         private static ObsoleteAttributesProviderService BuildSut(bool obsoleteDeprecated, List<string> obsoleteTokens = null)
